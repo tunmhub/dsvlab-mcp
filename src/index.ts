@@ -8,6 +8,7 @@ import { registerPowerTools } from './tools/power';
 import { registerSimulateTools } from './tools/simulate';
 import { registerInspectTools } from './tools/inspect';
 import { registerTestTools } from './tools/test';
+import { registerDrawTools } from './tools/draw';
 import { shutdown } from './lifecycle';
 
 async function main(): Promise<void> {
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
   registerSimulateTools(server);
   registerInspectTools(server);
   registerTestTools(server);
+  registerDrawTools(server);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
