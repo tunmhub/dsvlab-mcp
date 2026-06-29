@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "dsvlab": {
+      "command": "node",
+      "args": ["C:/Users/17256/Desktop/计算机组成原理课设/dsvlab2.0/mcp/dsvlab-mcp/dist/index.js"],
+      "env": {
+        "DSVLAB_INDEX": "C:/Users/17256/Desktop/计算机组成原理课设/dsvlab2.0/index.html",
+        "DSVLAB_CHANNEL": "msedge",
+        "DSVLAB_HEADLESS": "0"
+      }
+    }
+  }
+}
