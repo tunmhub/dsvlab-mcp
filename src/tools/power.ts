@@ -1,6 +1,6 @@
 // 电源工具:开 / 关 / 复位
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getBridge } from '../lifecycle';
+import { getBridge, recordPowerOn } from '../lifecycle';
 
 export function registerPowerTools(server: McpServer): void {
   server.tool(
@@ -10,6 +10,7 @@ export function registerPowerTools(server: McpServer): void {
     async () => {
       const bridge = await getBridge();
       const r = await bridge.powerOn();
+      recordPowerOn(true);
       return { content: [{ type: 'text', text: `✅ 电源已开 (runState=${r.runState})` }] };
     },
   );
@@ -21,6 +22,7 @@ export function registerPowerTools(server: McpServer): void {
     async () => {
       const bridge = await getBridge();
       const r = await bridge.powerOff();
+      recordPowerOn(false);
       return { content: [{ type: 'text', text: `✅ 电源已关 (runState=${r.runState})` }] };
     },
   );
@@ -32,6 +34,7 @@ export function registerPowerTools(server: McpServer): void {
     async () => {
       const bridge = await getBridge();
       const r = await bridge.reset();
+      recordPowerOn(true);
       return { content: [{ type: 'text', text: `✅ 已复位 (runState=${r.runState})` }] };
     },
   );

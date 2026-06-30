@@ -1,7 +1,7 @@
-// 读取/检查工具:枚举元件 / 取元件详情 / 读引脚 / 读写存储 / 快照
+// 读取/检查工具:枚举元件 / 取元件详情 / 读引脚 / 读写存储 / 快照 / 防护状态
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { getBridge } from '../lifecycle';
+import { getBridge, recordWriteMemory } from '../lifecycle';
 
 export function registerInspectTools(server: McpServer): void {
   server.registerTool<any, any>(
@@ -100,6 +100,7 @@ export function registerInspectTools(server: McpServer): void {
       const bridge = await getBridge();
       try {
         await bridge.writeMemory(id, address, value);
+        recordWriteMemory(id, address, value); // 记录会话状态(卡死后重放)
         return { content: [{ type: 'text', text: `✅ ${id}[${address}] = ${value}` }] };
       } catch (e: any) {
         return { content: [{ type: 'text', text: `❌ ${e.message}` }], isError: true };
@@ -115,6 +116,16 @@ export function registerInspectTools(server: McpServer): void {
       const snap = await bridge.snapshot();
       const lines = snap.map((c) => `${c.id} ${c.name}: [${c.pinValue.join(',')}]${c.memory ? ` mem[${c.memory.length}]` : ''}`);
       return { content: [{ type: 'text', text: `快照 ${snap.length} 元件:\n` + lines.join('\n') }] };
+    },
+  );
+
+  server.registerTool<any, any>(
+    'get_guard_status',
+    { description: '查防护补丁状态:是否启用、每元件每拍 input 上限(maxPerComp)、累计饿死次数(triggers)、最后触发的元件。triggers>0 表示曾遇到组合反馈环。' },
+    async (_args: any, _extra: any): Promise<any> => {
+      const bridge = await getBridge();
+      const s = await bridge.getGuardStatus();
+      return { content: [{ type: 'text', text: `防护: ${s.enabled ? '✅启用' : '❌未启用'} | maxPerComp=${s.maxPerComp} | 饿死触发=${s.triggers} 次 | 最后触发元件=${s.lastTriggerComp ?? '无'}` }] };
     },
   );
 }

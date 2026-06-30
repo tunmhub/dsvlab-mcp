@@ -41,6 +41,8 @@ export async function startBrowser(): Promise<Page> {
   );
   // 设置默认脉冲宽度(加速测试)
   await page.evaluate((ms) => (globalThis as any).__bridge.setPulseWidth(ms), config.defaultPulseWidth);
+  // 安装防护补丁:防止组合反馈环导致 runCircuit 死循环卡死主线程
+  await page.evaluate((m) => (globalThis as any).__bridge.installGuard(m), 200);
 
   return page;
 }

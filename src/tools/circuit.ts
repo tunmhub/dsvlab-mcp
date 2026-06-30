@@ -1,7 +1,7 @@
 // 电路管理工具:加载 / 清空
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { getBridge } from '../lifecycle';
+import { getBridge, recordLoadCircuit } from '../lifecycle';
 import { validateCircuitText } from '../lib/validate';
 
 export function registerCircuitTools(server: McpServer): void {
@@ -27,6 +27,7 @@ export function registerCircuitTools(server: McpServer): void {
         }
       }
       const r = await bridge.load(text);
+      recordLoadCircuit(text); // 记录会话状态(卡死后重放)
       return { content: [{ type: 'text', text: `✅ 已加载:元件 ${r.count} 个\nIDs: ${r.ids.join(', ')}` }] };
     },
   );

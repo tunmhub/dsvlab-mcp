@@ -152,6 +152,68 @@ export const INJECT_SCRIPT = `
       id: c.id, name: c.name, pinValue: c.pinValue.slice(),
       memory: Array.isArray(c.memory) ? c.memory.slice() : null,
     })),
+
+    // —— 防护补丁:防止组合反馈环导致 runCircuit while 死循环 ——
+    // 原理:patch 所有 Compo*.prototype.input,用 WeakMap+run token 计数,
+    // 单次 runCircuit 内每元件被 input 超过 maxPerComp 次则强制 return false(饿死反馈环)。
+    // runCircuit patch 负责每次开始时生成新 token。正常 DAG 每元件每拍 input 1-2 次,零影响。
+    installGuard: (maxPerComp) => {
+      maxPerComp = maxPerComp || 200;
+      if (W.__guardInstalled) return { installed: false, already: true };
+      W.__guardInstalled = true;
+      W.__guardState = { enabled: true, maxPerComp: maxPerComp, triggers: 0, lastTriggerComp: null };
+
+      const counts = new WeakMap(); // compObj -> {token, count}
+      let currentToken = 0;
+
+      // patch cDispatch.runCircuit:每次调用前生成新 token
+      const origRunCircuit = W.cDispatch.runCircuit;
+      W.cDispatch.runCircuit = function () {
+        currentToken = (currentToken + 1) >>> 0;
+        return origRunCircuit.call(this);
+      };
+
+      // patch 所有 Compo* 原型 input(原型层,新建元件自动生效)
+      let patched = 0;
+      for (const k of Object.keys(W)) {
+        if (!/^Compo/.test(k)) continue;
+        const fn = W[k];
+        if (typeof fn !== 'function' || !fn.prototype || !fn.prototype.input) continue;
+        if (fn.prototype.__guardWrapped) continue;
+        const origInput = fn.prototype.input;
+        fn.prototype.__guardWrapped = true;
+        fn.prototype.input = function (pinNo, value) {
+          const rec = counts.get(this);
+          if (!rec || rec.token !== currentToken) {
+            counts.set(this, { token: currentToken, count: 1 });
+          } else {
+            rec.count++;
+            if (rec.count > W.__guardState.maxPerComp) {
+              W.__guardState.triggers++;
+              W.__guardState.lastTriggerComp = this.id || '(unknown)';
+              // eslint-disable-next-line no-console
+              console.error('[guard] 饿死反馈环', this.id, 'count=', rec.count);
+              return false; // 不再入队,饿死
+            }
+          }
+          // 源器件 input() 无参,透传;普通 input(pinNo,value)
+          if (arguments.length === 0) return origInput.call(this);
+          return origInput.call(this, pinNo, value);
+        };
+        patched++;
+      }
+      return { installed: true, patchedProtos: patched, maxPerComp: maxPerComp };
+    },
+
+    // 查防护状态
+    getGuardStatus: () => W.__guardState
+      ? {
+          enabled: W.__guardState.enabled,
+          maxPerComp: W.__guardState.maxPerComp,
+          triggers: W.__guardState.triggers,
+          lastTriggerComp: W.__guardState.lastTriggerComp,
+        }
+      : { enabled: false, maxPerComp: null, triggers: 0, lastTriggerComp: null },
   };
   return 'ok';
 })()

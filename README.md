@@ -61,7 +61,9 @@ npm test
 
 > 浏览器是 **lazy 启动**:MCP 服务连上后不立即弹窗,第一次调用工具时才启动。
 
-## 工具清单(共 25 个)
+## 工具清单(共 27 个)
+
+> **防护补丁**:浏览器启动时自动注入,防止组合反馈环导致 `runCircuit` 死循环卡死主线程(原型 `input` 加 WeakMap+run token 计数,单拍每元件超 200 次 input 饿死)。卡死时工具调用超时(8s)自动重启浏览器并重放会话(电路 txt + memory 写操作 + 电源状态)。`get_guard_status` 查防护状态。
 
 ### 电路
 | 工具 | 说明 |
@@ -85,7 +87,8 @@ npm test
 | 工具 | 说明 |
 |---|---|
 | `step` | 单步:跑空一次就绪队列(一次稳定传播) |
-| `run` | 连续运行:启动 ContinuousPulse 跑 N 毫秒后停 |
+| `run` | 连续运行:启动 ContinuousPulse 跑 N 毫秒后停(有防护,安全) |
+| `run_steps` | MCP 主动节拍(推荐):每步触发单脉冲/step 后让出主线程,跑 N 拍,响应最好 |
 | `stop` | 停止所有连续脉冲(清 timer) |
 | `press_switch` | 翻转开关(toggle) |
 | `set_switch` | 设置开关到 0/1(处理初值高阻,自动判断是否需要翻转) |
@@ -101,6 +104,7 @@ npm test
 | `read_pin` / `read_all_pins` | 读引脚值(0低 / 1高 / 2高阻) |
 | `read_memory` / `write_memory` | 读写 RAM6116/EPROM memory(运行时,不随 txt 保存) |
 | `snapshot` | 全电路所有引脚快照 |
+| `get_guard_status` | 查防护状态(是否启用/阈值/饿死触发次数) |
 
 ### 批量测试
 | 工具 | 说明 |

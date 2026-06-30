@@ -32,6 +32,24 @@ export function registerSimulateTools(server: McpServer): void {
   );
 
   server.registerTool<any, any>(
+    'run_steps',
+    {
+      description: 'MCP 主动节拍(推荐):不依赖 ContinuousPulse 自驱动,每步触发单脉冲(或仅 step)后让出主线程,跑 steps 拍。浏览器每拍之间空闲,响应最好,适合批量时序测试。pulse_id 不传则每步仅 step。',
+      inputSchema: z.object({
+        steps: z.number().int().min(1).default(10).describe('要推进的拍数'),
+        pulse_id: z.string().optional().describe('SinglePulse 元件 id;不传则每步仅 step(跑空队列)'),
+        step_ms: z.number().int().min(0).default(10).describe('每步之间让出主线程的毫秒数'),
+      }),
+    },
+    async (args: any, _extra: any): Promise<any> => {
+      const { steps, pulse_id, step_ms } = args;
+      const bridge = await getBridge();
+      const r = await bridge.runSteps(steps, pulse_id ?? null, step_ms);
+      return { content: [{ type: 'text', text: `✅ 已推进 ${r.steps} 拍` }] };
+    },
+  );
+
+  server.registerTool<any, any>(
     'stop',
     { description: '停止所有连续脉冲(清除元件 timer),不影响元件当前状态。' },
     async (_args: any, _extra: any): Promise<any> => {
