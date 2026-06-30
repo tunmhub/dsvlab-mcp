@@ -69,7 +69,7 @@ export function registerInspectTools(server: McpServer): void {
   server.registerTool<any, any>(
     'read_memory',
     {
-      description: '读 RAM6116/EPROM 的 memory 数组。注意:memory 硬编码在源码,不随电路 txt 保存,刷新页面会重置。',
+      description: '读 RAM6116/EPROM 的 memory。每单元返回 bits(位数组)和 scalar(整数,LSB 权重)。memory 硬编码在源码,不随电路 txt 保存,刷新页面会重置。',
       inputSchema: z.object({ id: z.string() }),
     },
     async (args: any, _extra: any): Promise<any> => {
@@ -77,8 +77,8 @@ export function registerInspectTools(server: McpServer): void {
       const bridge = await getBridge();
       try {
         const r = await bridge.readMemory(id);
-        const memStr = r.memory.map((v: number, i: number) => `${i.toString(16).toUpperCase().padStart(3, '0')}:${v}`).join(' ');
-        return { content: [{ type: 'text', text: `${id} memory (${r.memory.length} 单元):\n` + memStr }] };
+        const memStr = r.memory.map((row: { bits: number[]; scalar: number }, i: number) => `${i.toString(16).toUpperCase().padStart(3, '0')}:${row.scalar.toString(16).padStart(2, '0')} [${row.bits.join('')}]`).join(' ');
+        return { content: [{ type: 'text', text: `${id} memory (${r.memory.length} 单元,scalar/bits):\n` + memStr }] };
       } catch (e: any) {
         return { content: [{ type: 'text', text: `❌ ${e.message}` }], isError: true };
       }
@@ -88,20 +88,20 @@ export function registerInspectTools(server: McpServer): void {
   server.registerTool<any, any>(
     'write_memory',
     {
-      description: '写 RAM6116/EPROM 的 memory 某单元(运行时)。注意:不随 txt 保存,刷新页面会重置回源码值。',
+      description: '写 RAM6116/EPROM 的 memory 某单元(运行时)。标量 value 会按芯片位宽(数输出+双向引脚)自动拆成位数组 [bit0,bit1,...](LSB 在 [0] 对应 Q0),再写入 memory[addr]。不随 txt 保存,刷新页面会重置回源码值。',
       inputSchema: z.object({
         id: z.string(),
         address: z.number().int().min(0).describe('地址(数组下标)'),
-        value: z.number().int().describe('该单元的值(按芯片位宽,如 0-255)'),
+        value: z.number().int().describe('标量值,自动按芯片位宽拆位(如 RAM6116 0-255, EPROM2716C3 0-0xFFFFFF)'),
       }),
     },
     async (args: any, _extra: any): Promise<any> => {
       const { id, address, value } = args;
       const bridge = await getBridge();
       try {
-        await bridge.writeMemory(id, address, value);
-        recordWriteMemory(id, address, value); // 记录会话状态(卡死后重放)
-        return { content: [{ type: 'text', text: `✅ ${id}[${address}] = ${value}` }] };
+        const r = await bridge.writeMemory(id, address, value);
+        recordWriteMemory(id, address, value); // 记录会话状态(卡死后重放,去重最终态)
+        return { content: [{ type: 'text', text: `✅ ${id}[${address}] = ${value} → bits [${r.bits.join('')}]` }] };
       } catch (e: any) {
         return { content: [{ type: 'text', text: `❌ ${e.message}` }], isError: true };
       }
@@ -121,11 +121,11 @@ export function registerInspectTools(server: McpServer): void {
 
   server.registerTool<any, any>(
     'get_guard_status',
-    { description: '查防护补丁状态:是否启用、每元件每拍 input 上限(maxPerComp)、累计饿死次数(triggers)、最后触发的元件。triggers>0 表示曾遇到组合反馈环。' },
+    { description: '查防护补丁状态:是否启用、maxPerComp、累计饿死次数(triggers)、最后触发元件、runCircuitCount(累计 runCircuit 次数)、lastTriggerRunCircuit(触发时是第几次 runCircuit)。triggers>0 表示遇反馈环;配合 run_steps 的 triggeredAt 可定位第几步触发。' },
     async (_args: any, _extra: any): Promise<any> => {
       const bridge = await getBridge();
       const s = await bridge.getGuardStatus();
-      return { content: [{ type: 'text', text: `防护: ${s.enabled ? '✅启用' : '❌未启用'} | maxPerComp=${s.maxPerComp} | 饿死触发=${s.triggers} 次 | 最后触发元件=${s.lastTriggerComp ?? '无'}` }] };
+      return { content: [{ type: 'text', text: `防护: ${s.enabled ? '✅启用' : '❌未启用'} | maxPerComp=${s.maxPerComp} | 饿死=${s.triggers} 次 | 最后触发=${s.lastTriggerComp ?? '无'} @ runCircuit#${s.lastTriggerRunCircuit ?? '-'} (累计 ${s.runCircuitCount})` }] };
     },
   );
 }

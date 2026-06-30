@@ -132,19 +132,38 @@ export const INJECT_SCRIPT = `
       }));
     },
 
-    // 读 RAM6116/EPROM memory
+    // 读 RAM6116/EPROM memory。返回原始位数组 + scalar(整数,LSB 权重,便于 AI 读)
     readMemory: (id) => {
       const c = getC(id);
       if (!Array.isArray(c.memory)) err('该元件无 memory 字段: ' + id);
-      return { id, memory: c.memory };
+      const mem = c.memory.map((row) => {
+        const arr = Array.isArray(row) ? row : [row];
+        let scalar = 0;
+        for (let i = 0; i < arr.length; i++) scalar |= (arr[i] & 1) << i;
+        return { bits: arr.slice(), scalar };
+      });
+      return { id, memory: mem };
     },
 
-    // 写 memory(运行时,不随 txt 保存,刷新页面会重置)
+    // 写 memory。标量 value 会按芯片位宽(数 pinFunction 中 1+11 的个数)自动拆成位数组
+    // [bit0, bit1, ...](LSB 在 [0],对应 Q0)。value 为数组则直传(兼容)。
+    // 原因:EPROM2716C3/RAM6116 的 memory[addr] 是位数组,work() 按 memory[a][j] 取位,
+    // 标量写入后取位得 undefined → Q 高阻。
     writeMemory: (id, addr, value) => {
       const c = getC(id);
       if (!Array.isArray(c.memory)) err('该元件无 memory 字段: ' + id);
-      c.memory[addr] = value;
-      return { id, addr, value };
+      let bits;
+      if (Array.isArray(value)) {
+        bits = value.slice();
+      } else {
+        let n = 0;
+        for (const pf of c.pinFunction) if (pf === 1 || pf === 11) n++;
+        if (n === 0) n = 8; // fallback
+        bits = [];
+        for (let i = 0; i < n; i++) bits.push((value >>> i) & 1);
+      }
+      c.memory[addr] = bits;
+      return { id, addr, bits };
     },
 
     // 全电路快照
@@ -161,15 +180,16 @@ export const INJECT_SCRIPT = `
       maxPerComp = maxPerComp || 200;
       if (W.__guardInstalled) return { installed: false, already: true };
       W.__guardInstalled = true;
-      W.__guardState = { enabled: true, maxPerComp: maxPerComp, triggers: 0, lastTriggerComp: null };
+      W.__guardState = { enabled: true, maxPerComp: maxPerComp, triggers: 0, lastTriggerComp: null, runCircuitCount: 0, lastTriggerRunCircuit: null };
 
       const counts = new WeakMap(); // compObj -> {token, count}
       let currentToken = 0;
 
-      // patch cDispatch.runCircuit:每次调用前生成新 token
+      // patch cDispatch.runCircuit:每次调用前生成新 token,并累加 runCircuitCount
       const origRunCircuit = W.cDispatch.runCircuit;
       W.cDispatch.runCircuit = function () {
         currentToken = (currentToken + 1) >>> 0;
+        W.__guardState.runCircuitCount++;
         return origRunCircuit.call(this);
       };
 
@@ -191,6 +211,7 @@ export const INJECT_SCRIPT = `
             if (rec.count > W.__guardState.maxPerComp) {
               W.__guardState.triggers++;
               W.__guardState.lastTriggerComp = this.id || '(unknown)';
+              W.__guardState.lastTriggerRunCircuit = W.__guardState.runCircuitCount;
               // eslint-disable-next-line no-console
               console.error('[guard] 饿死反馈环', this.id, 'count=', rec.count);
               return false; // 不再入队,饿死
@@ -212,8 +233,10 @@ export const INJECT_SCRIPT = `
           maxPerComp: W.__guardState.maxPerComp,
           triggers: W.__guardState.triggers,
           lastTriggerComp: W.__guardState.lastTriggerComp,
+          runCircuitCount: W.__guardState.runCircuitCount,
+          lastTriggerRunCircuit: W.__guardState.lastTriggerRunCircuit,
         }
-      : { enabled: false, maxPerComp: null, triggers: 0, lastTriggerComp: null },
+      : { enabled: false, maxPerComp: null, triggers: 0, lastTriggerComp: null, runCircuitCount: 0, lastTriggerRunCircuit: null },
   };
   return 'ok';
 })()

@@ -45,7 +45,8 @@ export function registerSimulateTools(server: McpServer): void {
       const { steps, pulse_id, step_ms } = args;
       const bridge = await getBridge();
       const r = await bridge.runSteps(steps, pulse_id ?? null, step_ms);
-      return { content: [{ type: 'text', text: `✅ 已推进 ${r.steps} 拍` }] };
+      const trig = r.triggeredAt.length ? `\n⚠️ 第 ${r.triggeredAt.join(', ')} 步触发反馈环饿死(共 ${r.finalTriggers} 次)` : `\n无反馈环触发(triggers=${r.finalTriggers})`;
+      return { content: [{ type: 'text', text: `✅ 已推进 ${r.steps} 拍${trig}` }] };
     },
   );
 

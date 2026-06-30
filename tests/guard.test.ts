@@ -121,4 +121,31 @@ describe('防护补丁:反馈环', () => {
     const r = await bridge.runSteps(5, null, 5);
     expect(r.steps).toBe(5);
   }, 30000);
+
+  test('write_memory 标量自动按位宽拆位,read 回 scalar 正确', async () => {
+    // RAM6116: IO0-IO7 双向(11),位宽=8。写标量 0xA1 应拆成 [1,0,0,0,0,1,0,1]
+    const txt = buildCircuitText(
+      [{ name: 'RAM6116', x: '100px', y: '100px', id: 'CP0', customName: 'RAM6116' }],
+      [],
+    );
+    await bridge.load(txt);
+    await bridge.writeMemory('CP0', 10, 0xA1);
+    const r = await bridge.readMemory('CP0');
+    const cell = r.memory[10];
+    expect(cell.scalar).toBe(0xA1);
+    expect(cell.bits).toEqual([1, 0, 0, 0, 0, 1, 0, 1]);
+  }, 30000);
+
+  test('write_memory 同地址多次写,只留最终态(read 回最后一次)', async () => {
+    const txt = buildCircuitText(
+      [{ name: 'RAM6116', x: '100px', y: '100px', id: 'CP0', customName: 'RAM6116' }],
+      [],
+    );
+    await bridge.load(txt);
+    await bridge.writeMemory('CP0', 5, 0x0F);  // 先写错
+    await bridge.writeMemory('CP0', 5, 0xFF);  // 覆盖修正
+    await bridge.writeMemory('CP0', 5, 0x2A);  // 再覆盖
+    const r = await bridge.readMemory('CP0');
+    expect(r.memory[5].scalar).toBe(0x2A); // 最终态
+  }, 30000);
 });

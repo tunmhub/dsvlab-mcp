@@ -63,7 +63,9 @@ npm test
 
 ## 工具清单(共 27 个)
 
-> **防护补丁**:浏览器启动时自动注入,防止组合反馈环导致 `runCircuit` 死循环卡死主线程(原型 `input` 加 WeakMap+run token 计数,单拍每元件超 200 次 input 饿死)。卡死时工具调用超时(8s)自动重启浏览器并重放会话(电路 txt + memory 写操作 + 电源状态)。`get_guard_status` 查防护状态。
+> **防护补丁**:浏览器启动时自动注入,防止组合反馈环导致 `runCircuit` 死循环卡死主线程(原型 `input` 加 WeakMap+run token 计数,单拍每元件超 200 次 input 饿死)。卡死时工具调用超时(8s)自动重启浏览器并重放会话(电路 txt 优先从磁盘重读 + memory 写操作去重最终态 + 电源状态)。`get_guard_status` 返回触发次数/元件/第几次 runCircuit;`run_steps` 返回 `triggeredAt` 定位第几步触发。
+>
+> **边界**:阈值是 per-component 的,多个独立反馈环各自饿死互不影响;但若两个环共享某元件(如三态门同时被两环驱动),该元件计数会叠加,可能比预期更快触发 guard。课设电路一般不会出现。
 
 ### 电路
 | 工具 | 说明 |
@@ -102,7 +104,7 @@ npm test
 | `list_components` | 所有元件概览 |
 | `get_component` | 元件全部引脚(pinName/pinFunction/pinValue) |
 | `read_pin` / `read_all_pins` | 读引脚值(0低 / 1高 / 2高阻) |
-| `read_memory` / `write_memory` | 读写 RAM6116/EPROM memory(运行时,不随 txt 保存) |
+| `read_memory` / `write_memory` | 读写 RAM6116/EPROM memory;write 标量按芯片位宽自动拆位数组,read 返回 bits+scalar |
 | `snapshot` | 全电路所有引脚快照 |
 | `get_guard_status` | 查防护状态(是否启用/阈值/饿死触发次数) |
 

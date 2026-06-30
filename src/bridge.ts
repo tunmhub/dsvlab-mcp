@@ -105,13 +105,19 @@ export class DsvlabBridge {
    * 完全 MCP 控制节拍,浏览器每拍之间空闲,响应最好,适合批量时序测试。
    * pulseId 可选:传则每步触发该单脉冲;不传则每步仅 step(跑空队列)。
    */
-  async runSteps(steps: number, pulseId?: string | null, stepMs = 10): Promise<{ steps: number }> {
+  async runSteps(steps: number, pulseId?: string | null, stepMs = 10): Promise<{ steps: number; triggeredAt: number[]; finalTriggers: number }> {
+    const startTriggers = (await this.getGuardStatus()).triggers;
+    const triggeredAt: number[] = [];
+    let prevTriggers = startTriggers;
     for (let i = 0; i < steps; i++) {
       if (pulseId) await this.triggerPulse(pulseId);
       else await this.step();
       await new Promise((r) => setTimeout(r, stepMs));
+      const cur = (await this.getGuardStatus()).triggers;
+      if (cur > prevTriggers) triggeredAt.push(i + 1); // 第 i+1 步触发饿死
+      prevTriggers = cur;
     }
-    return { steps };
+    return { steps, triggeredAt, finalTriggers: prevTriggers };
   }
 
   // —— 防护 ——
@@ -119,7 +125,7 @@ export class DsvlabBridge {
     return this.call<{ installed: boolean; patchedProtos?: number; maxPerComp?: number; already?: boolean }>('installGuard', maxPerComp);
   }
   getGuardStatus() {
-    return this.call<{ enabled: boolean; maxPerComp: number | null; triggers: number; lastTriggerComp: string | null }>('getGuardStatus');
+    return this.call<{ enabled: boolean; maxPerComp: number | null; triggers: number; lastTriggerComp: string | null; runCircuitCount: number; lastTriggerRunCircuit: number | null }>('getGuardStatus');
   }
   /** setPage:卡死后重启时,用新 page 重建 bridge */
   setPage(page: Page) { this.page = page; }
@@ -129,7 +135,7 @@ export class DsvlabBridge {
   getComponent(id: string) { return this.call<ComponentDetail>('getComponent', id); }
   readPin(id: string, pinNo: number) { return this.call<{ id: string; pinNo: number; pinName: string; pinValue: number }>('readPin', id, pinNo); }
   readAllPins(id: string) { return this.call<PinInfo[]>('readAllPins', id); }
-  readMemory(id: string) { return this.call<{ id: string; memory: number[] }>('readMemory', id); }
-  writeMemory(id: string, addr: number, value: number) { return this.call<{ id: string; addr: number; value: number }>('writeMemory', id, addr, value); }
+  readMemory(id: string) { return this.call<{ id: string; memory: { bits: number[]; scalar: number }[] }>('readMemory', id); }
+  writeMemory(id: string, addr: number, value: number) { return this.call<{ id: string; addr: number; bits: number[] }>('writeMemory', id, addr, value); }
   snapshot() { return this.call<SnapshotItem[]>('snapshot'); }
 }
